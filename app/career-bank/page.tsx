@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -118,37 +118,42 @@ export default function CareerBankPage() {
   const [selectedEducation, setSelectedEducation] = useState("All")
   const [showTrendingOnly, setShowTrendingOnly] = useState(false)
   const [showRemoteOnly, setShowRemoteOnly] = useState(false)
-  const [favorites, setFavorites] = useState<number[]>([])
+  const [favorites, setFavorites] = useState([])
   const [activeTab, setActiveTab] = useState("all")
 
-  useEffect(() => {
-    const search = searchParams.get("search")
-    const industry = searchParams.get("industry")
-    const trending = searchParams.get("trending")
-
-    if (search) setSearchQuery(search)
-    if (industry) setSelectedIndustry(industry)
-    if (trending) setShowTrendingOnly(true)
-  }, [searchParams])
-
+  // Initialize from URL search params (only runs on client)
   useEffect(() => {
     try {
-      const savedFavorites = localStorage.getItem("ns_career_favorites")
-      if (savedFavorites) {
-        setFavorites(JSON.parse(savedFavorites))
-      }
+      const search = searchParams?.get("search")
+      const industry = searchParams?.get("industry")
+      const trending = searchParams?.get("trending")
+
+      if (search) setSearchQuery(search)
+      if (industry) setSelectedIndustry(industry)
+      if (trending === "true") setShowTrendingOnly(true)
+    } catch (err) {
+      // ignore if searchParams is not available yet
+    }
+  }, [searchParams])
+
+  // Load favorites from localStorage
+  useEffect(() => {
+    try {
+      const saved = typeof window !== "undefined" ? localStorage.getItem("ns_career_favorites") : null
+      if (saved) setFavorites(JSON.parse(saved))
     } catch (error) {
-      console.log("[v0] Failed to load favorites:", error)
+      console.warn("[v0] Failed to load favorites:", error)
     }
   }, [])
 
   const filteredCareers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
     return careerData.filter((career) => {
       const matchesSearch =
-        !searchQuery ||
-        career.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        career.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        career.skills.some((skill) => skill.toLowerCase().includes(searchQuery.toLowerCase()))
+        !q ||
+        career.title.toLowerCase().includes(q) ||
+        career.description.toLowerCase().includes(q) ||
+        career.skills.some((skill) => skill.toLowerCase().includes(q))
 
       const matchesIndustry = selectedIndustry === "All" || career.industry === selectedIndustry
       const matchesExperience = selectedExperience === "All" || career.experience.includes(selectedExperience)
@@ -162,24 +167,32 @@ export default function CareerBankPage() {
     })
   }, [searchQuery, selectedIndustry, selectedExperience, selectedEducation, showTrendingOnly, showRemoteOnly])
 
-  const toggleFavorite = (careerId: number) => {
-    const newFavorites = favorites.includes(careerId)
-      ? favorites.filter((id) => id !== careerId)
-      : [...favorites, careerId]
-
+  const toggleFavorite = (careerId) => {
+    const newFavorites = favorites.includes(careerId) ? favorites.filter((id) => id !== careerId) : [...favorites, careerId]
     setFavorites(newFavorites)
 
     try {
-      localStorage.setItem("ns_career_favorites", JSON.stringify(newFavorites))
+      if (typeof window !== "undefined") localStorage.setItem("ns_career_favorites", JSON.stringify(newFavorites))
     } catch (error) {
-      console.log("[v0] Failed to save favorites:", error)
+      console.warn("[v0] Failed to save favorites:", error)
     }
   }
 
-  const handleSearch = (query: string) => {
+  const handleSearch = (query) => {
     setSearchQuery(query)
     if (query.trim()) {
-      router.push(`/career-bank?search=${encodeURIComponent(query.trim())}`)
+      // Keep URL in sync with the search (client navigation)
+      try {
+        router.push(`/career-bank?search=${encodeURIComponent(query.trim())}`)
+      } catch (e) {
+        // router might not be ready in some environments; ignore
+      }
+    } else {
+      try {
+        router.push(`/career-bank`)
+      } catch (e) {
+        // ignore
+      }
     }
   }
 
@@ -190,7 +203,11 @@ export default function CareerBankPage() {
     setSelectedEducation("All")
     setShowTrendingOnly(false)
     setShowRemoteOnly(false)
-    router.push("/career-bank")
+    try {
+      router.push("/career-bank")
+    } catch (e) {
+      // ignore
+    }
   }
 
   const favoriteCareers = careerData.filter((career) => favorites.includes(career.id))
@@ -327,9 +344,7 @@ export default function CareerBankPage() {
                           aria-label={favorites.includes(career.id) ? "Remove from favorites" : "Add to favorites"}
                         >
                           <Heart
-                            className={`h-4 w-4 ${
-                              favorites.includes(career.id) ? "fill-red-500 text-red-500" : "text-muted-foreground"
-                            }`}
+                            className={`h-4 w-4 ${favorites.includes(career.id) ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
                           />
                         </Button>
                       </div>
